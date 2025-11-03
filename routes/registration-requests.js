@@ -8,9 +8,7 @@ const RegistrationRequest = require('../models/RegistrationRequest');
 const router = express.Router();
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587, // Changed to 587 (TLS)
-  secure: false, // Changed to false (use STARTTLS)
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -22,7 +20,7 @@ if (!fs.existsSync(pdfsDir)) {
   fs.mkdirSync(pdfsDir, { recursive: true });
 }
 
-// Download Remote Logo
+// Download remote logo
 const downloadLogo = (url, filepath) => new Promise((resolve, reject) => {
   https.get(url, (res) => {
     if (res.statusCode === 200) {
@@ -38,7 +36,7 @@ const downloadLogo = (url, filepath) => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
-// POST /api/request - Form (Generates Random "No")
+// POST /api/request - Create request (protected)
 router.post('/', async (req, res) => {
   try {
     const { name, class: className, form, version, group, mothers_name, fathers_name, present_address, permanent_address, dob, citizenship_no, mobile_no, hobby, campus, email } = req.body;
@@ -70,7 +68,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/request - All Requests (Admin)
+// GET /api/request - All requests (admin - protected)
 router.get('/', async (req, res) => {
   try {
     const { campus } = req.query;
@@ -82,7 +80,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT /api/request/:id/approve - Approve, Generate PDF (Page 2 with Signature), Email
+// PUT /api/request/:id/approve - Approve, generate PDF, email (protected)
 router.put('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
@@ -96,46 +94,72 @@ router.put('/:id/approve', async (req, res) => {
     const logoPath = path.join(pdfsDir, 'logo.jpg');
     await downloadLogo(logoUrl, logoPath);
 
-    // Generate PDF (Exact Page 2)
-    const doc = new PDFDocument({ layout: 'portrait', size: 'A4' });
+    // Generate PDF
+    const doc = new PDFDocument();
     const pdfPath = path.join(pdfsDir, `${id}.pdf`);
     doc.pipe(fs.createWriteStream(pdfPath));
 
-    // Header
-    doc.image(logoPath, 50, 30, { width: 55 });
-    doc.fontSize(17).text('MILESTONE COLLEGE SCIENCE CLUB', 110, 35, { letterSpacing: 1.5 });
+    // Header (Local Logo)
+    doc.image(logoPath, 50, 30, { width: 50 });
+    doc.fontSize(14).text('MILESTONE COLLEGE SCIENCE CLUB', 110, 35);
     doc.fontSize(10).text('Sector-11, Uttara Model Town', 110, 50);
-    doc.fontSize(10).text('Dhaka-1230', 110, 60);
-    doc.fontSize(14).text('MEMBERSHIP FORM', 250, 35, { align: 'center' });
-    doc.image('passport-placeholder.jpg', 450, 30, { width: 70, height: 85 });
+    doc.fontSize(12).text('MEMBERSHIP FORM', 250, 35, { align: 'center' });
+    doc.image('passport-placeholder.jpg', 450, 30, { width: 60 });
 
-    // SL NO & No (No SL NO, Only "No:")
-    doc.fontSize(11).text('No:', 150, 80);
-    doc.text(request.code_no || '', 200, 80);
+    // Table
+    doc.fontSize(10).text('SL NO: 701', 50, 80);
+    doc.text('No:', 150, 80);
+    doc.text('Class:', 250, 80);
+    doc.text('IX', 300, 80);
+    doc.text('X', 330, 80);
+    doc.text('XI', 360, 80);
+    doc.text('XII', 390, 80);
+    doc.text('Code No:', 450, 80);
+    doc.text('2 7 6 8 3 1 6', 500, 80);
 
-    // Name & Class
-    doc.text('Name:', 50, 100);
-    doc.text(request.name || '', 100, 100);
-    doc.text('Class:', 250, 100);
-    doc.text(request.class || '', 300, 100);
+    // Fields
+    doc.text('1. Name (English):', 50, 100);
+    doc.text(request.name || '', 150, 100);
+    doc.text('Version:', 50, 140);
+    doc.text('Bangla', 120, 140);
+    doc.text('English', 180, 140);
+    doc.text('Group:', 50, 160);
+    doc.text('Sc.', 100, 160);
+    doc.text('B.St', 130, 160);
+    doc.text('Hum.', 160, 160);
+    doc.text('Form:', 50, 180);
+    doc.text(request.form || '', 90, 180);
 
-    // Form Valid, Version, Code No
-    doc.text('Form:', 50, 120);
-    doc.text(request.form || '', 90, 120);
-    doc.text('Valid from for the year-20__ ', 50, 140);
-    doc.text('Code No:', 450, 140);
-    doc.text(request.code_no || '', 500, 140);
+    doc.text("2. Mother's Name:", 50, 200);
+    doc.text(request.mothers_name || '', 180, 200);
+    doc.text("3. Father's Name:", 50, 220);
+    doc.text(request.fathers_name || '', 180, 220);
+    doc.text('4. Present Address:', 50, 240);
+    doc.text(request.present_address || '', 180, 240);
+    doc.text('5. Permanent Address:', 50, 260);
+    doc.text(request.permanent_address || '', 180, 260);
+    doc.text('6. Date of Birth:', 50, 280);
+    doc.text(request.dob || '', 180, 280);
+    doc.text('7. Citizenship No:', 50, 300);
+    doc.text(request.citizenship_no || '', 180, 300);
+    doc.text('8. Telephone/Mobile No:', 50, 320);
+    doc.text(request.mobile_no || '', 180, 320);
+    doc.text('9. Hobby:', 50, 340);
+    doc.text(request.hobby || '', 180, 340);
 
-    // Signature Section
+    // Footer
+    doc.text('Membership valid for the year-20__ Code No: ______', 50, 360);
     doc.text('Moderator', 50, 400);
-    const signaturePath = 'E:\\mcc\\mcsc-backend\\moderatorsign.png';
+    doc.text('Applicant', 300, 400);
+
+    // Add Signature PNG
+    const signaturePath = path.join(__dirname, '..', 'moderatorsign.png');
     if (fs.existsSync(signaturePath)) {
       doc.image(signaturePath, 50, 420, { width: 100 });
     }
 
     doc.end();
 
-    // Wait for PDF
     await new Promise((resolve, reject) => {
       doc.on('end', resolve);
       doc.on('error', reject);
@@ -152,10 +176,9 @@ router.put('/:id/approve', async (req, res) => {
         path: pdfPath
       }]
     };
-    const info = await transporter.sendMail(mailOptions);
-    console.log('PDF emailed:', info.messageId);
+    await transporter.sendMail(mailOptions);
 
-    // Update Status After Success
+    // Update Status
     request.status = 'Approved';
     await request.save();
 
@@ -170,7 +193,7 @@ router.put('/:id/approve', async (req, res) => {
   }
 });
 
-// POST /api/request/admin-login - Admin login
+// POST /api/request/admin-login - Admin login (unprotected)
 router.post('/admin-login', (req, res) => {
   const { username, password } = req.body;
   const admins = {
