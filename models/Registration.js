@@ -1,25 +1,23 @@
+// server/models/Registration.js
 const mongoose = require('mongoose');
 
-const registrationSchema = new mongoose.Schema({
-  eventTitle: { type: String, required: true },
-  selectedActivities: { type: String, required: true },
-  totalCost: { type: Number, required: true },
-  status: { type: String, enum: ['Due', 'Paid'], default: 'Due' },
-  uniqueCode: { type: String, required: true, unique: true },
-  uniqueId: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  contactNumber: { type: String, required: true },
-  parentsContact: { type: String, required: true },
-  whatsapp: { type: String },
-  email: { type: String, required: true },
-  class: { type: String, required: true },
-  group: { type: String, required: true },
-  version: { type: String, required: true },
-  section: { type: String, required: true },
-  idNo: { type: String, required: true },
-  formTeacher: { type: String },
-  paymentMethod: { type: String, default: 'offline' },
+const RegistrationSchema = new mongoose.Schema({
+  supabaseId: { type: String, required: true, index: true },
+  name: { type: String, required: true, trim: true },
+  code: { type: String, required: true, trim: true, index: true },
+  class: { type: Number, required: true, enum: [9, 10, 11, 12] },
+  section: { type: String, required: true, trim: true },
+  campus: { type: String, required: true, enum: ['main campus', 'permanent campus'] },
+  version: { type: String, required: true, enum: ['english', 'bangla'] },
+  department: { type: String, required: true, enum: ['science', 'bst', 'arts'] },
+  building: { type: String, required: true, trim: true, lowercase: true },
+  contactNumber: { type: String, required: true, trim: true },
+  approved: { type: Boolean, default: false },
+  approvedBy: { type: String, trim: true, default: null },
+  approvedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
+}, {
+  collection: 'club_reg'
 });
 
-module.exports = mongoose.model('Registration', registrationSchema);
+module.exports = mongoose.model('Registration', RegistrationSchema);

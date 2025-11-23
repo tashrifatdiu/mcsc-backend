@@ -1,10 +1,13 @@
+// server/models/Admin.js
 const mongoose = require('mongoose');
 
-const adminSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  campus: { type: String, required: true }, // 'main', 'b22', 'b27', 'b7'
+const AdminSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true, lowercase: true },
+  passwordHash: { type: String, required: true },
+  building: { type: String, required: true, trim: true, lowercase: true },
   createdAt: { type: Date, default: Date.now }
+}, {
+  collection: 'admins'
 });
 
-module.exports = mongoose.model('Admin', adminSchema);
+module.exports = mongoose.model('Admin', AdminSchema);
