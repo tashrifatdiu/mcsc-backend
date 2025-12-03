@@ -10,9 +10,10 @@ const cors = require('cors');
 const registrationRoutes = require('./routes/registration');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
-const journalRoutes = require('./routes/journal'); // NEW
+const journalRoutes = require('./routes/journal');
 const coursesRoutes = require('./routes/courses');
 const certificatesRouter = require('./routes/certificates');
+const ordersRouter = require('./routes/orders');
 
 const app = express();
 
@@ -31,13 +32,14 @@ mongoose.connect(MONGO_URI, {
   // Do not exit to allow debugging
 });
 
-// Mount routers (ensure these were already present in your file; journal added)
+// Mount routers
 app.use('/api/registration', registrationRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/journal', journalRoutes); // NEW
+app.use('/api/journal', journalRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/certificates', certificatesRouter);
+app.use('/api/orders', ordersRouter);
 
 // health
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
