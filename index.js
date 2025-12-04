@@ -14,6 +14,8 @@ const journalRoutes = require('./routes/journal');
 const coursesRoutes = require('./routes/courses');
 const certificatesRouter = require('./routes/certificates');
 const ordersRouter = require('./routes/orders');
+const eventsRouter = require('./routes/events');
+const coreMembersRouter = require('./routes/coreMembers');
 
 const app = express();
 
@@ -40,6 +42,8 @@ app.use('/api/journal', journalRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/certificates', certificatesRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/events', eventsRouter);
+app.use('/api/core-members', coreMembersRouter);
 
 // health
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

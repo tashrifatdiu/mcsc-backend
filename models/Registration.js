@@ -13,8 +13,10 @@ const RegistrationSchema = new mongoose.Schema({
   building: { type: String, required: true, trim: true, lowercase: true },
   contactNumber: { type: String, required: true, trim: true },
   approved: { type: Boolean, default: false },
+  status: { type: String, enum: ['pending', 'approved', 'declined'], default: 'pending' },
   approvedBy: { type: String, trim: true, default: null },
   approvedAt: { type: Date, default: null },
+  declinedReason: { type: String, trim: true, default: null },
   createdAt: { type: Date, default: Date.now }
 }, {
   collection: 'club_reg'

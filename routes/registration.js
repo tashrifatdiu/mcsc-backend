@@ -119,13 +119,26 @@ router.post('/', verifySupabase, async (req, res) => {
       contactNumber: contactNumber.toString().trim()
     };
 
+    // Check if user already has a pending or approved application
+    const userExisting = await Registration.findOne({ 
+      supabaseId: normalized.supabaseId,
+      status: { $in: ['pending', 'approved'] }
+    }).lean();
+    
+    if (userExisting) {
+      return res.status(400).json({ 
+        error: 'You already have a pending or approved application. You cannot submit another application.',
+        existingApplication: userExisting
+      });
+    }
+
     // Duplicate detection by code
     const existing = await Registration.findOne({ code: normalized.code }).lean();
     if (existing && !force) {
       return res.status(409).json({ error: 'A registration with this code already exists.', existing });
     }
 
-    const reg = new Registration({ ...normalized });
+    const reg = new Registration({ ...normalized, status: 'pending' });
     const saved = await reg.save();
     return res.status(201).json({ message: 'Registration submitted', registration: saved });
   } catch (err) {
@@ -152,6 +165,39 @@ router.get('/my', verifySupabase, async (req, res) => {
     res.json({ registrations: regs });
   } catch (err) {
     console.error('Error fetching user registrations', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/registration/status - Check if user can apply
+router.get('/status', verifySupabase, async (req, res) => {
+  try {
+    const supabaseId = req.supabaseUser.id;
+    
+    // Find any existing registration for this user
+    const existingReg = await Registration.findOne({ supabaseId }).sort({ createdAt: -1 }).lean();
+    
+    if (!existingReg) {
+      return res.json({ canApply: true, status: 'no_application' });
+    }
+    
+    // Check status
+    if (existingReg.status === 'declined') {
+      return res.json({ 
+        canApply: true, 
+        status: 'declined',
+        previousApplication: existingReg
+      });
+    }
+    
+    // If pending or approved, cannot apply again
+    return res.json({ 
+      canApply: false, 
+      status: existingReg.status,
+      existingApplication: existingReg
+    });
+  } catch (err) {
+    console.error('Error checking registration status', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
