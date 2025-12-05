@@ -16,6 +16,7 @@ const certificatesRouter = require('./routes/certificates');
 const ordersRouter = require('./routes/orders');
 const eventsRouter = require('./routes/events');
 const coreMembersRouter = require('./routes/coreMembers');
+const jacketPreOrdersRouter = require('./routes/jacketPreOrders');
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/certificates', certificatesRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/core-members', coreMembersRouter);
+app.use('/api/jacket-preorders', jacketPreOrdersRouter);
 
 // health
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
