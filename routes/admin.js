@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Registration = require('../models/Registration');
 const Journal = require('../models/Journal');
+const User = require('../models/User');
+const Order = require('../models/Order');
 
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'please_set_ADMIN_JWT_SECRET';
 const ADMIN_JWT_EXPIRES = process.env.ADMIN_JWT_EXPIRES || '8h';
@@ -228,6 +230,104 @@ router.delete('/journals/:id', verifyAdminToken, async (req, res) => {
     return res.json({ message: 'Journal deleted' });
   } catch (err) {
     console.error('Error deleting journal', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/admin/members
+ * Get all club members (approved registrations) - Main building admin only
+ */
+router.get('/members', verifyAdminToken, async (req, res) => {
+  try {
+    const adminBuilding = req.admin.building;
+    if (normalizeBuildingName(adminBuilding) !== 'mainbuilding') {
+      return res.status(403).json({ error: 'Not authorized to view members' });
+    }
+
+    const members = await Registration.find({ approved: true }).sort({ createdAt: -1 }).lean();
+    return res.json({ members });
+  } catch (err) {
+    console.error('Error fetching members', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/admin/non-members
+ * Get all registered users who are not club members - Main building admin only
+ */
+router.get('/non-members', verifyAdminToken, async (req, res) => {
+  try {
+    const adminBuilding = req.admin.building;
+    if (normalizeBuildingName(adminBuilding) !== 'mainbuilding') {
+      return res.status(403).json({ error: 'Not authorized to view non-members' });
+    }
+
+    const users = await User.find().sort({ createdAt: -1 }).lean();
+    return res.json({ users });
+  } catch (err) {
+    console.error('Error fetching non-members', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/admin/member/:id/details
+ * Get detailed information about a specific member including order history - Main building admin only
+ */
+router.get('/member/:id/details', verifyAdminToken, async (req, res) => {
+  try {
+    const adminBuilding = req.admin.building;
+    if (normalizeBuildingName(adminBuilding) !== 'mainbuilding') {
+      return res.status(403).json({ error: 'Not authorized to view member details' });
+    }
+
+    const id = req.params.id;
+    const member = await Registration.findById(id).lean();
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+
+    // Get order history for this member (match by email or phone)
+    const orders = await Order.find({
+      $or: [
+        { email: member.email },
+        { phone: member.contactNumber }
+      ]
+    }).sort({ createdAt: -1 }).lean();
+
+    return res.json({ member, orders });
+  } catch (err) {
+    console.error('Error fetching member details', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/admin/user/:id/details
+ * Get detailed information about a specific user including order history - Main building admin only
+ */
+router.get('/user/:id/details', verifyAdminToken, async (req, res) => {
+  try {
+    const adminBuilding = req.admin.building;
+    if (normalizeBuildingName(adminBuilding) !== 'mainbuilding') {
+      return res.status(403).json({ error: 'Not authorized to view user details' });
+    }
+
+    const id = req.params.id;
+    const user = await User.findById(id).lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get order history for this user (match by email or phone)
+    const orders = await Order.find({
+      $or: [
+        { email: user.email },
+        { phone: user.whatsapp }
+      ]
+    }).sort({ createdAt: -1 }).lean();
+
+    return res.json({ user, orders });
+  } catch (err) {
+    console.error('Error fetching user details', err && err.stack ? err.stack : err);
     return res.status(500).json({ error: 'Server error' });
   }
 });
