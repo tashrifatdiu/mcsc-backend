@@ -154,13 +154,16 @@ router.delete('/:id', verifySupabase, async (req, res) => {
 
 /**
  * GET /api/journal
- * Query: ?limit=&skip=
+ * Query: ?limit=&skip=&sortBy=&search=&timeFilter=
  * Public list of journals
  */
 router.get('/', async (req, res) => {
   try {
     const limit = Math.min(50, Number(req.query.limit) || 20);
     const skip = Math.max(0, Number(req.query.skip) || 0);
+    const sortBy = req.query.sortBy || 'recent'; // 'recent' or 'engagement'
+    const search = req.query.search || '';
+    const timeFilter = req.query.timeFilter || ''; // '24h', 'week', 'month'
 
     // By default, only return published journals (isDraft: false and approved: true).
     // If ?mine=true and a valid Supabase token is provided, include the user's own journals (including drafts and unapproved) in the result.
@@ -198,10 +201,54 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const journals = await Journal.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-    return res.json({ journals });
+    // Search filter
+    if (search) {
+      filter.title = { $regex: search, $options: 'i' };
+    }
+
+    // Time filter
+    if (timeFilter) {
+      const now = new Date();
+      let timeThreshold;
+      if (timeFilter === '24h') {
+        timeThreshold = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      } else if (timeFilter === 'week') {
+        timeThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (timeFilter === 'month') {
+        timeThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+      if (timeThreshold) {
+        filter.publishedAt = { $gte: timeThreshold };
+      }
+    }
+
+    // Sort order
+    let sortOrder = { createdAt: -1 };
+    if (sortBy === 'engagement') {
+      sortOrder = { engagementScore: -1, createdAt: -1 };
+    }
+
+    const journals = await Journal.find(filter).sort(sortOrder).skip(skip).limit(limit).lean();
+    const total = await Journal.countDocuments(filter);
+    
+    return res.json({ journals, total, hasMore: skip + journals.length < total });
   } catch (err) {
     console.error('[journal] list error', err && (err.stack || err));
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/journal/contributors
+ * Get list of journal contributors
+ */
+router.get('/contributors', async (req, res) => {
+  try {
+    const JournalContributor = require('../models/JournalContributor');
+    const contributors = await JournalContributor.find().sort({ order: 1 }).lean();
+    return res.json({ contributors });
+  } catch (err) {
+    console.error('[journal] contributors error', err);
     return res.status(500).json({ error: 'Server error' });
   }
 });
@@ -238,6 +285,105 @@ router.get('/:id', async (req, res) => {
     return res.json({ journal });
   } catch (err) {
     console.error('[journal] get error', err && (err.stack || err));
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/journal/:id/like
+ * Toggle like on a journal
+ */
+router.post('/:id/like', verifySupabase, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const userId = req.supabaseUser.id;
+    
+    const journal = await Journal.findById(id);
+    if (!journal) return res.status(404).json({ error: 'Not found' });
+    
+    if (!journal.likes) journal.likes = [];
+    
+    const likeIndex = journal.likes.indexOf(userId);
+    if (likeIndex > -1) {
+      // Unlike
+      journal.likes.splice(likeIndex, 1);
+    } else {
+      // Like
+      journal.likes.push(userId);
+    }
+    
+    await journal.save();
+    return res.json({ message: 'Like toggled', likes: journal.likes.length, liked: likeIndex === -1 });
+  } catch (err) {
+    console.error('[journal] like error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/journal/:id/comment
+ * Add a comment to a journal
+ * Body: { text }
+ */
+router.post('/:id/comment', verifySupabase, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { text } = req.body || {};
+    
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Comment text is required' });
+    }
+    
+    const journal = await Journal.findById(id);
+    if (!journal) return res.status(404).json({ error: 'Not found' });
+    
+    if (!journal.comments) journal.comments = [];
+    
+    const comment = {
+      userId: req.supabaseUser.id,
+      userName: req.supabaseUser.user_metadata?.full_name || req.supabaseUser.email || 'Anonymous',
+      userEmail: req.supabaseUser.email,
+      text: text.trim(),
+      createdAt: new Date()
+    };
+    
+    journal.comments.push(comment);
+    await journal.save();
+    
+    return res.json({ message: 'Comment added', comment, commentsCount: journal.comments.length });
+  } catch (err) {
+    console.error('[journal] comment error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/journal/:id/sticker
+ * Add a sticker reaction to a journal
+ * Body: { sticker } - emoji string like '❤️', '👍', '🎉', '🔥', '💯'
+ */
+router.post('/:id/sticker', verifySupabase, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { sticker } = req.body || {};
+    
+    if (!sticker) {
+      return res.status(400).json({ error: 'Sticker is required' });
+    }
+    
+    const journal = await Journal.findById(id);
+    if (!journal) return res.status(404).json({ error: 'Not found' });
+    
+    if (!journal.stickers) journal.stickers = new Map();
+    
+    const currentCount = journal.stickers.get(sticker) || 0;
+    journal.stickers.set(sticker, currentCount + 1);
+    
+    await journal.save();
+    
+    return res.json({ message: 'Sticker added', stickers: Object.fromEntries(journal.stickers) });
+  } catch (err) {
+    console.error('[journal] sticker error', err);
     return res.status(500).json({ error: 'Server error' });
   }
 });
