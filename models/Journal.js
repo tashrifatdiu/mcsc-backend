@@ -10,7 +10,7 @@ const CommentSchema = new mongoose.Schema({
 });
 
 const JournalSchema = new mongoose.Schema({
-  title: { type: String, required: true, trim: true },
+  title: { type: String, required: true, trim: true, index: 'text' }, // Text index for search
   headerSize: { type: String, enum: ['h1', 'h2', 'h3'], default: 'h2' },
   fontFamily: { type: String, trim: true, default: 'Inter, system-ui, sans-serif' },
   color: { type: String, trim: true, default: '#0f172a' },
@@ -24,17 +24,22 @@ const JournalSchema = new mongoose.Schema({
   approved: { type: Boolean, default: false, index: true },
   approvedBy: { type: String, trim: true, default: null },
   approvedAt: { type: Date, default: null },
-  publishedAt: { type: Date, default: null },
+  publishedAt: { type: Date, default: null, index: true }, // Index for time-based queries
   // Engagement features
   likes: { type: [String], default: [] }, // Array of user IDs who liked
   comments: { type: [CommentSchema], default: [] },
   stickers: { type: Map, of: Number, default: {} }, // Map of sticker emoji to count
   engagementScore: { type: Number, default: 0, index: true }, // Calculated score for sorting
-  createdAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now, index: true }, // Index for sorting
   updatedAt: { type: Date, default: Date.now }
 }, {
   collection: 'journals'
 });
+
+// Compound indexes for common queries
+JournalSchema.index({ isDraft: 1, approved: 1, engagementScore: -1 });
+JournalSchema.index({ isDraft: 1, approved: 1, createdAt: -1 });
+JournalSchema.index({ authorSupabaseId: 1, isDraft: 1 });
 
 // Calculate engagement score before saving
 JournalSchema.pre('save', function (next) {

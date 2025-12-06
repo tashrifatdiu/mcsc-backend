@@ -6,6 +6,10 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
 
 const registrationRoutes = require('./routes/registration');
 const authRoutes = require('./routes/auth');
@@ -20,19 +24,80 @@ const jacketPreOrdersRouter = require('./routes/jacketPreOrders');
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for development, configure properly in production
+  crossOriginEmbedderPolicy: false
+}));
 
-// Connect to MongoDB
+// Compression middleware
+app.use(compression());
+
+// Logging middleware
+app.use(morgan('combined'));
+
+// CORS with options
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
+}));
+
+// Body parser with size limits
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // Stricter limit for write operations
+  message: 'Too many requests, please try again later.'
+});
+
+// Apply rate limiting to all routes
+app.use('/api/', limiter);
+
+// Stricter limits for write operations
+app.use('/api/journal', strictLimiter);
+app.use('/api/registration', strictLimiter);
+app.use('/api/orders', strictLimiter);
+
+// Connect to MongoDB with optimized settings
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/mcsc';
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
+  maxPoolSize: 10, // Connection pool size
+  minPoolSize: 2,
+  socketTimeoutMS: 45000,
+  serverSelectionTimeoutMS: 5000,
+  family: 4 // Use IPv4
 }).then(() => {
-  console.log('Connected to MongoDB:', MONGO_URI);
+  console.log('✅ Connected to MongoDB:', MONGO_URI);
+  console.log('📊 Connection pool configured: min=2, max=10');
 }).catch(err => {
-  console.error('MongoDB connection error:', err && err.message ? err.message : err);
+  console.error('❌ MongoDB connection error:', err && err.message ? err.message : err);
   // Do not exit to allow debugging
+});
+
+// MongoDB connection event handlers
+mongoose.connection.on('error', err => {
+  console.error('MongoDB error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
 });
 
 // Mount routers
@@ -47,8 +112,21 @@ app.use('/api/events', eventsRouter);
 app.use('/api/core-members', coreMembersRouter);
 app.use('/api/jacket-preorders', jacketPreOrdersRouter);
 
-// health
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// Enhanced health check
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  };
+  
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ ...health, status: 'error' });
+  }
+  
+  res.json(health);
+});
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Not Found' }));
